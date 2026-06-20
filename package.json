@@ -1,14 +1,15 @@
 {
   "name": "propdesk-myfxbook-proxy",
-  "version": "1.0.0",
-  "description": "Standalone proxy for Myfxbook API calls, avoiding Cloudflare Worker IP blocking",
+  "version": "2.0.0",
+  "description": "PropDesk backend — Myfxbook proxy + Stripe payments",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
+    "cors": "^2.8.5",
     "express": "^4.19.2",
-    "cors": "^2.8.5"
+    "stripe": "^14.0.0"
   },
   "engines": {
     "node": ">=18.0.0"
