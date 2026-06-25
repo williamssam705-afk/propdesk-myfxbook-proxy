@@ -94,6 +94,7 @@ app.post('/stripe/create-checkout', async (req, res) => {
       cancel_url: `${APP_URL}/app.html?upgrade=cancelled`,
       subscription_data: {
         metadata: { userId, plan, billing: billing || 'monthly' },
+        trial_period_days: 7,
       },
     });
 
@@ -214,7 +215,7 @@ async function handleStripeEvent(event) {
 
       const priceId = sub.items.data[0]?.price?.id;
       const plan = getPlanFromPriceId(priceId);
-      const status = sub.status === 'active' ? 'active' : sub.status === 'past_due' ? 'past_due' : 'cancelled';
+      const status = sub.status === 'active' ? 'active' : sub.status === 'trialing' ? 'trialing' : sub.status === 'past_due' ? 'past_due' : 'cancelled';
 
       await upsertSubscription({
         user_id: userId,
