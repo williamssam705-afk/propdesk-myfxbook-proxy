@@ -11,8 +11,10 @@ const PORT = process.env.PORT || 3000;
 // ── ENV VARS (set in Render dashboard) ──────────────────────
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
-const STRIPE_PRO_PRICE_ID = process.env.STRIPE_PRO_PRICE_ID || 'price_1TkNvBJvBLMVit7iFf56DRdt';
-const STRIPE_ELITE_PRICE_ID = process.env.STRIPE_ELITE_PRICE_ID || 'price_1TkNr2JvBLMVit7iIn40X1Hs';
+const STRIPE_PRO_PRICE_ID         = process.env.STRIPE_PRO_PRICE_ID         || 'price_1TkNvBJvBLMVit7iFf56DRdt';
+const STRIPE_ELITE_PRICE_ID       = process.env.STRIPE_ELITE_PRICE_ID       || 'price_1TkNr2JvBLMVit7iIn40X1Hs';
+const STRIPE_PRO_PRICE_ID_ANNUAL   = process.env.STRIPE_PRO_PRICE_ID_ANNUAL   || 'price_1TmByfFOB9bKloCeP1mGRCVd';
+const STRIPE_ELITE_PRICE_ID_ANNUAL = process.env.STRIPE_ELITE_PRICE_ID_ANNUAL || 'price_1TmBzEFOB9bKloCeDnIBlnxm';
 const SUPABASE_URL = process.env.SUPABASE_URL || 'https://afzvlugymcjtenpnolag.supabase.co';
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const APP_URL = process.env.APP_URL || 'https://propdesk-hvn.pages.dev';
@@ -68,10 +70,16 @@ app.get('/myfxbook/*', async (req, res) => {
 app.post('/stripe/create-checkout', async (req, res) => {
   if (!STRIPE_SECRET_KEY) return res.status(500).json({ error: 'Stripe not configured' });
 
-  const { plan, userId, userEmail } = req.body;
+  const { plan, billing, userId, userEmail } = req.body;
   if (!plan || !userId) return res.status(400).json({ error: 'Missing plan or userId' });
 
-  const priceId = plan === 'elite' ? STRIPE_ELITE_PRICE_ID : STRIPE_PRO_PRICE_ID;
+  // Pick price ID based on plan + billing period
+  let priceId;
+  if (plan === 'elite') {
+    priceId = billing === 'annual' ? STRIPE_ELITE_PRICE_ID_ANNUAL : STRIPE_ELITE_PRICE_ID;
+  } else {
+    priceId = billing === 'annual' ? STRIPE_PRO_PRICE_ID_ANNUAL : STRIPE_PRO_PRICE_ID;
+  }
 
   try {
     const stripe = await import('stripe').then(m => m.default(STRIPE_SECRET_KEY));
@@ -81,11 +89,11 @@ app.post('/stripe/create-checkout', async (req, res) => {
       payment_method_types: ['card'],
       line_items: [{ price: priceId, quantity: 1 }],
       customer_email: userEmail,
-      metadata: { userId, plan },
+      metadata: { userId, plan, billing: billing || 'monthly' },
       success_url: `${APP_URL}/app.html?upgrade=success&plan=${plan}`,
       cancel_url: `${APP_URL}/app.html?upgrade=cancelled`,
       subscription_data: {
-        metadata: { userId, plan },
+        metadata: { userId, plan, billing: billing || 'monthly' },
       },
     });
 
@@ -106,7 +114,6 @@ app.post('/stripe/portal', async (req, res) => {
   try {
     const stripe = await import('stripe').then(m => m.default(STRIPE_SECRET_KEY));
 
-    // Look up stripe customer ID from Supabase
     const subRes = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions?user_id=eq.${userId}&select=stripe_customer_id`, {
       headers: {
         'apikey': SUPABASE_SERVICE_KEY,
@@ -172,6 +179,13 @@ async function handleStripeEvent(event) {
     }
   };
 
+  // Helper — determine plan from any price ID (monthly or annual)
+  const getPlanFromPriceId = (priceId) => {
+    if (priceId === STRIPE_ELITE_PRICE_ID || priceId === STRIPE_ELITE_PRICE_ID_ANNUAL) return 'elite';
+    if (priceId === STRIPE_PRO_PRICE_ID   || priceId === STRIPE_PRO_PRICE_ID_ANNUAL)   return 'pro';
+    return 'pro'; // fallback
+  };
+
   switch (event.type) {
     case 'checkout.session.completed': {
       const session = event.data.object;
@@ -198,9 +212,8 @@ async function handleStripeEvent(event) {
       const userId = sub.metadata?.userId;
       if (!userId) break;
 
-      // Determine plan from price ID
       const priceId = sub.items.data[0]?.price?.id;
-      const plan = priceId === STRIPE_ELITE_PRICE_ID ? 'elite' : 'pro';
+      const plan = getPlanFromPriceId(priceId);
       const status = sub.status === 'active' ? 'active' : sub.status === 'past_due' ? 'past_due' : 'cancelled';
 
       await upsertSubscription({
