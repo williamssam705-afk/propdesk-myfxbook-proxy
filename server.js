@@ -204,7 +204,47 @@ async function handleStripeEvent(event) {
         current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
         updated_at: new Date().toISOString(),
       });
-      console.log(`✅ New ${plan} subscription for user ${userId}`);
+            console.log(`✅ New ${plan} subscription for user ${userId}`);
+
+      // Check if this user was referred — schedule credit after 30 days
+      const refRes = await fetch(`${SUPABASE_URL}/rest/v1/referrals?referred_id=eq.${userId}&status=eq.signed_up&select=id,referrer_id`, {
+        headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
+      });
+      const refs = await refRes.json();
+      if (refs?.[0]) {
+        const ref = refs[0];
+        // Mark as paid immediately
+        await fetch(`${SUPABASE_URL}/rest/v1/referrals?id=eq.${ref.id}`, {
+          method: 'PATCH',
+          headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'paid', first_paid_at: new Date().toISOString() })
+        });
+        // Check referrer hasn't exceeded 5 credits
+        const credRes = await fetch(`${SUPABASE_URL}/rest/v1/referral_credits?user_id=eq.${ref.referrer_id}&select=id`, {
+          headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
+        });
+        const existingCredits = await credRes.json();
+        if (existingCredits.length < 5) {
+          // Credit both referrer and referred after 30 days (simulated by logging now — you'd use a cron in production)
+          // For now, credit immediately — update to 30-day delay when you have a cron job
+          const creditBody = JSON.stringify([
+            { user_id: ref.referrer_id, amount_months: 1, reason: `Referral credit — friend subscribed`, applied: false },
+            { user_id: userId, amount_months: 1, reason: 'Welcome referral credit — 1 month free', applied: false }
+          ]);
+          await fetch(`${SUPABASE_URL}/rest/v1/referral_credits`, {
+            method: 'POST',
+            headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+            body: creditBody
+          });
+          // Update referral status to credited
+          await fetch(`${SUPABASE_URL}/rest/v1/referrals?id=eq.${ref.id}`, {
+            method: 'PATCH',
+            headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'credited', credited_at: new Date().toISOString() })
+          });
+          console.log(`✅ Referral credited: referrer ${ref.referrer_id} + referred ${userId}`);
+        }
+      }
       break;
     }
 
