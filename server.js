@@ -493,6 +493,202 @@ function onboardingEmail3(email) {
 </body></html>`;
 }
 
+// ── WEEKLY ELITE REPORT ──────────────────────────────────────
+function weeklyReportEmail(userData) {
+  const { email, displayName, trades, payouts, accounts } = userData;
+  const name = displayName || email.split('@')[0];
+
+  // Calculate stats from this week's trades
+  const now = new Date();
+  const weekStart = new Date(now);
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  const weekStartStr = weekStart.toISOString().split('T')[0];
+
+  const weekTrades = trades.filter(t => t.trade_date >= weekStartStr);
+  const wins = weekTrades.filter(t => t.pnl > 0).length;
+  const losses = weekTrades.filter(t => t.pnl < 0).length;
+  const weekPnl = weekTrades.reduce((s, t) => s + (t.pnl || 0), 0);
+  const winRate = weekTrades.length ? Math.round(wins / weekTrades.length * 100) : 0;
+  const totalPayouts = payouts.reduce((s, p) => s + (p.amount || 0), 0);
+
+  const pnlColor = weekPnl >= 0 ? '#3dfd98' : '#ff4a5c';
+  const pnlText = (weekPnl >= 0 ? '+' : '') + '$' + Math.abs(weekPnl).toFixed(2);
+  const weekOf = weekStart.toLocaleDateString('en-GB', { day:'numeric', month:'long' });
+
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+
+  <!-- Header -->
+  <tr><td style="background:#07001f;border-radius:16px 16px 0 0;padding:28px 40px;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="vertical-align:middle;">
+          <span style="font-size:20px;font-weight:900;color:#fff;letter-spacing:0.03em;">PROP<span style="color:rgba(255,255,255,0.4);">DESK</span></span><br>
+          <span style="font-size:12px;color:rgba(255,255,255,0.35);font-family:monospace;">Weekly report · w/c ${weekOf}</span>
+        </td>
+        <td align="right" style="vertical-align:middle;">
+          <span style="background:#3dfd98;color:#07001f;font-size:11px;font-weight:800;padding:5px 12px;border-radius:20px;letter-spacing:0.06em;">ELITE</span>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- Body -->
+  <tr><td style="background:#fff;padding:36px 40px;">
+    <p style="margin:0 0 24px;font-size:15px;color:#555;line-height:1.6;">Hey ${name} — here's your trading summary for the week.</p>
+
+    <!-- Weekly stats -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        <td width="48%" style="background:#f8f7ff;border-radius:12px;padding:20px;text-align:center;vertical-align:top;">
+          <div style="font-size:32px;font-weight:900;color:${pnlColor};margin-bottom:4px;">${pnlText}</div>
+          <div style="font-size:11px;color:#999;text-transform:uppercase;letter-spacing:0.07em;font-family:monospace;">Week P&L</div>
+        </td>
+        <td width="4%"></td>
+        <td width="48%" style="background:#f8f7ff;border-radius:12px;padding:20px;text-align:center;vertical-align:top;">
+          <div style="font-size:32px;font-weight:900;color:#6e45ff;margin-bottom:4px;">${winRate}%</div>
+          <div style="font-size:11px;color:#999;text-transform:uppercase;letter-spacing:0.07em;font-family:monospace;">Win Rate</div>
+        </td>
+      </tr>
+      <tr><td colspan="3" style="height:12px;"></td></tr>
+      <tr>
+        <td width="48%" style="background:#f8f7ff;border-radius:12px;padding:20px;text-align:center;vertical-align:top;">
+          <div style="font-size:32px;font-weight:900;color:#0a0020;margin-bottom:4px;">${weekTrades.length}</div>
+          <div style="font-size:11px;color:#999;text-transform:uppercase;letter-spacing:0.07em;font-family:monospace;">Trades (${wins}W / ${losses}L)</div>
+        </td>
+        <td width="4%"></td>
+        <td width="48%" style="background:#f8f7ff;border-radius:12px;padding:20px;text-align:center;vertical-align:top;">
+          <div style="font-size:32px;font-weight:900;color:#3dfd98;margin-bottom:4px;">$${totalPayouts.toLocaleString()}</div>
+          <div style="font-size:11px;color:#999;text-transform:uppercase;letter-spacing:0.07em;font-family:monospace;">Total Payouts</div>
+        </td>
+      </tr>
+    </table>
+
+    ${weekTrades.length === 0 ? `
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr><td style="background:#fff8e6;border:1px solid #f59e0b;border-radius:12px;padding:18px 22px;">
+        <div style="font-size:14px;color:#b45309;line-height:1.6;">⚠️ <strong>No trades logged this week.</strong> Check your inactivity deadlines on the PropDesk dashboard to make sure you're not at risk of losing any funded accounts.</div>
+      </td></tr>
+    </table>` : ''}
+
+    <!-- Accounts -->
+    ${accounts.length > 0 ? `
+    <div style="font-size:12px;font-weight:700;color:#999;text-transform:uppercase;letter-spacing:0.08em;font-family:monospace;margin-bottom:12px;">Your accounts</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      ${accounts.slice(0,3).map(a => `
+      <tr><td style="padding:10px 0;border-bottom:1px solid #f0f0f0;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="font-size:14px;font-weight:600;color:#0a0020;">${a.firm}</td>
+            <td align="right" style="font-size:13px;color:#3dfd98;font-weight:700;">$${(a.balance || a.size || 0).toLocaleString()}</td>
+          </tr>
+          <tr>
+            <td style="font-size:12px;color:#999;font-family:monospace;padding-top:2px;">${a.status === 'funded' ? 'Funded' : a.status === 'phase2' ? 'Phase 2' : 'Phase 1'} · DD: ${a.current_drawdown || 0}% / ${a.max_drawdown || 10}%</td>
+            <td align="right" style="font-size:12px;color:#999;font-family:monospace;padding-top:2px;">$${(a.size || 0).toLocaleString()} account</td>
+          </tr>
+        </table>
+      </td></tr>`).join('')}
+    </table>` : ''}
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+      <tr><td align="center">
+        <a href="https://propdesk.uk/app.html" style="display:inline-block;background:#6e45ff;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:12px;">View full dashboard →</a>
+      </td></tr>
+    </table>
+
+    <p style="margin:0;font-size:13px;color:#bbb;line-height:1.6;text-align:center;">Have a great trading week. 💜</p>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="background:#f0f0f6;border-radius:0 0 16px 16px;padding:20px 40px;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;line-height:1.6;">
+      PropDesk · propdesk.uk · Elite plan<br>
+      You're receiving this because you're an Elite member.
+    </p>
+  </td></tr>
+
+</table></td></tr></table>
+</body></html>`;
+}
+
+// Weekly report endpoint — hit by cron job every Monday
+app.post('/email/weekly-report', async (req, res) => {
+  const { secret } = req.body;
+  // Basic protection so only your cron job can trigger it
+  if (secret !== process.env.CRON_SECRET) {
+    return res.status(401).json({ error: 'Unauthorised' });
+  }
+
+  try {
+    // Get all Elite users from Supabase
+    const subsRes = await fetch(`${SUPABASE_URL}/rest/v1/subscriptions?plan=eq.elite&status=eq.active&select=user_id`, {
+      headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
+    });
+    const subs = await subsRes.json();
+
+    let sent = 0;
+    for (const sub of subs) {
+      try {
+        // Get user email
+        const userRes = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_user_email`, {
+          method: 'POST',
+          headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ uid: sub.user_id })
+        });
+
+        // Get trades
+        const tradesRes = await fetch(`${SUPABASE_URL}/rest/v1/trades?user_id=eq.${sub.user_id}&select=*&order=trade_date.desc&limit=50`, {
+          headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
+        });
+        const trades = await tradesRes.json();
+
+        // Get payouts
+        const payoutsRes = await fetch(`${SUPABASE_URL}/rest/v1/payouts?user_id=eq.${sub.user_id}&status=eq.received&select=*`, {
+          headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
+        });
+        const payouts = await payoutsRes.json();
+
+        // Get accounts
+        const accountsRes = await fetch(`${SUPABASE_URL}/rest/v1/accounts?user_id=eq.${sub.user_id}&select=*`, {
+          headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
+        });
+        const accounts = await accountsRes.json();
+
+        // Get profile
+        const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${sub.user_id}&select=email,display_name`, {
+          headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
+        });
+        const profiles = await profileRes.json();
+        const profile = profiles?.[0];
+        if (!profile?.email) continue;
+
+        await sendEmail({
+          to: profile.email,
+          subject: `Your PropDesk weekly report 📊`,
+          html: weeklyReportEmail({
+            email: profile.email,
+            displayName: profile.display_name,
+            trades: Array.isArray(trades) ? trades : [],
+            payouts: Array.isArray(payouts) ? payouts : [],
+            accounts: Array.isArray(accounts) ? accounts : [],
+          })
+        });
+        sent++;
+      } catch (err) {
+        console.error('Weekly report error for user:', sub.user_id, err.message);
+      }
+    }
+
+    console.log(`✅ Weekly reports sent: ${sent}`);
+    res.json({ sent });
+  } catch (err) {
+    console.error('Weekly report batch error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── EMAIL API ENDPOINTS ──────────────────────────────────────
 
 // Send welcome email (called after signup webhook or directly)
