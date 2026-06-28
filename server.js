@@ -657,7 +657,7 @@ app.post('/email/weekly-report', async (req, res) => {
         const accounts = await accountsRes.json();
 
         // Get profile
-        const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${sub.user_id}&select=email,display_name`, {
+        const profileRes = await fetch(`${SUPABASE_URL}/rest/v1/profiles?id=eq.${sub.user_id}&select=email,name`, {
           headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
         });
         const profiles = await profileRes.json();
@@ -669,7 +669,7 @@ app.post('/email/weekly-report', async (req, res) => {
           subject: `Your PropDesk weekly report 📊`,
           html: weeklyReportEmail({
             email: profile.email,
-            displayName: profile.display_name,
+            displayName: profile.name,
             trades: Array.isArray(trades) ? trades : [],
             payouts: Array.isArray(payouts) ? payouts : [],
             accounts: Array.isArray(accounts) ? accounts : [],
