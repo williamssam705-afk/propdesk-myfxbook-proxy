@@ -10,6 +10,8 @@ const PORT = process.env.PORT || 3000;
 
 // ── ENV VARS (set in Render dashboard) ──────────────────────
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const FROM_EMAIL = 'PropDesk <noreply@propdesk.uk>';
 const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 const STRIPE_PRO_PRICE_ID         = process.env.STRIPE_PRO_PRICE_ID         || 'price_1TkNvBJvBLMVit7iFf56DRdt';
 const STRIPE_ELITE_PRICE_ID       = process.env.STRIPE_ELITE_PRICE_ID       || 'price_1TkNr2JvBLMVit7iIn40X1Hs';
@@ -206,6 +208,28 @@ async function handleStripeEvent(event) {
       });
             console.log(`✅ New ${plan} subscription for user ${userId}`);
 
+      // Send welcome email
+      if (session.customer_email) {
+        await sendEmail({
+          to: session.customer_email,
+          subject: 'Welcome to PropDesk 🚀',
+          html: welcomeEmail(session.customer_email)
+        });
+
+        // Schedule onboarding emails via setTimeout (day 2 = 48h, day 3 = 7 days)
+        setTimeout(() => sendEmail({
+          to: session.customer_email,
+          subject: 'Are you paying too much tax on your prop payouts?',
+          html: onboardingEmail2(session.customer_email)
+        }), 48 * 60 * 60 * 1000);
+
+        setTimeout(() => sendEmail({
+          to: session.customer_email,
+          subject: 'One rule could cost you your funded account ⚠️',
+          html: onboardingEmail3(session.customer_email)
+        }), 7 * 24 * 60 * 60 * 1000);
+      }
+
       // Check if this user was referred — schedule credit after 30 days
       const refRes = await fetch(`${SUPABASE_URL}/rest/v1/referrals?referred_id=eq.${userId}&status=eq.signed_up&select=id,referrer_id`, {
         headers: { 'apikey': SUPABASE_SERVICE_KEY, 'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}` }
@@ -291,6 +315,205 @@ async function handleStripeEvent(event) {
       console.log(`Unhandled event: ${event.type}`);
   }
 }
+
+// ============================================================
+// EMAIL SYSTEM (Resend)
+// ============================================================
+async function sendEmail({ to, subject, html }) {
+  if (!RESEND_API_KEY) { console.log('Resend not configured — skipping email'); return; }
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ from: FROM_EMAIL, to, subject, html }),
+    });
+    const data = await res.json();
+    if (data.id) { console.log(`✅ Email sent to ${to}: ${subject}`); }
+    else { console.error('Email error:', JSON.stringify(data)); }
+  } catch (err) { console.error('Email send failed:', err.message); }
+}
+
+function welcomeEmail(email) {
+  const name = email.split('@')[0];
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+
+  <!-- Header -->
+  <tr><td style="background:#07001f;border-radius:16px 16px 0 0;padding:32px 40px;text-align:center;">
+    <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+      <tr>
+        <td style="width:44px;height:44px;background:#6e45ff;border-radius:12px;text-align:center;vertical-align:middle;">
+          <span style="font-size:20px;font-weight:900;color:#fff;line-height:44px;">P</span>
+        </td>
+        <td style="padding-left:12px;font-size:22px;font-weight:900;color:#fff;letter-spacing:0.03em;vertical-align:middle;">
+          PROP<span style="color:rgba(255,255,255,0.4);">DESK</span>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- Body -->
+  <tr><td style="background:#ffffff;padding:40px;">
+    <h1 style="margin:0 0 8px;font-size:26px;font-weight:800;color:#0a0020;letter-spacing:-0.01em;">Welcome to PropDesk 🚀</h1>
+    <p style="margin:0 0 24px;font-size:15px;color:#666;line-height:1.6;">You're in. Here's everything you can do right now to get set up in under 5 minutes.</p>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr>
+        <td style="background:#f8f7ff;border-radius:12px;padding:20px 24px;border-left:4px solid #6e45ff;">
+          <div style="font-size:13px;font-weight:700;color:#6e45ff;margin-bottom:12px;text-transform:uppercase;letter-spacing:0.06em;">Get started in 3 steps</div>
+          <div style="font-size:14px;color:#333;line-height:1.8;">
+            <b>1.</b> Add your first funded account<br>
+            <b>2.</b> Connect Myfxbook for auto-sync (Pro/Elite)<br>
+            <b>3.</b> Log your first trade or payout
+          </div>
+        </td>
+      </tr>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <tr>
+        <td width="48%" style="background:#f8f7ff;border-radius:12px;padding:18px 20px;vertical-align:top;">
+          <div style="font-size:20px;margin-bottom:6px;">📊</div>
+          <div style="font-size:13px;font-weight:700;color:#0a0020;margin-bottom:4px;">Trade Journal</div>
+          <div style="font-size:12px;color:#888;line-height:1.5;">Log trades, upload screenshots, track your edge.</div>
+        </td>
+        <td width="4%"></td>
+        <td width="48%" style="background:#f8f7ff;border-radius:12px;padding:18px 20px;vertical-align:top;">
+          <div style="font-size:20px;margin-bottom:6px;">⚠️</div>
+          <div style="font-size:13px;font-weight:700;color:#0a0020;margin-bottom:4px;">Inactivity Alerts</div>
+          <div style="font-size:12px;color:#888;line-height:1.5;">Never lose a funded account to a missed day.</div>
+        </td>
+      </tr>
+      <tr><td colspan="3" style="height:12px;"></td></tr>
+      <tr>
+        <td width="48%" style="background:#f8f7ff;border-radius:12px;padding:18px 20px;vertical-align:top;">
+          <div style="font-size:20px;margin-bottom:6px;">💰</div>
+          <div style="font-size:13px;font-weight:700;color:#0a0020;margin-bottom:4px;">Payout Tracking</div>
+          <div style="font-size:12px;color:#888;line-height:1.5;">Log withdrawals, hit milestones, share your wins.</div>
+        </td>
+        <td width="4%"></td>
+        <td width="48%" style="background:#f8f7ff;border-radius:12px;padding:18px 20px;vertical-align:top;">
+          <div style="font-size:20px;margin-bottom:6px;">🧮</div>
+          <div style="font-size:13px;font-weight:700;color:#0a0020;margin-bottom:4px;">Tax Calculator</div>
+          <div style="font-size:12px;color:#888;line-height:1.5;">Know your tax liability before every withdrawal.</div>
+        </td>
+      </tr>
+    </table>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <tr><td align="center">
+        <a href="https://propdesk.uk/app.html" style="display:inline-block;background:#6e45ff;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:12px;letter-spacing:0.02em;">Open PropDesk →</a>
+      </td></tr>
+    </table>
+
+    <p style="margin:0;font-size:13px;color:#999;line-height:1.6;">Any questions? Reply to this email — we read every one.</p>
+  </td></tr>
+
+  <!-- Footer -->
+  <tr><td style="background:#f0f0f6;border-radius:0 0 16px 16px;padding:20px 40px;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;line-height:1.6;">
+      PropDesk · propdesk.uk<br>
+      <a href="https://propdesk.uk" style="color:#6e45ff;text-decoration:none;">Unsubscribe</a>
+    </p>
+  </td></tr>
+
+</table></td></tr></table>
+</body></html>`;
+}
+
+function onboardingEmail2(email) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+  <tr><td style="background:#07001f;border-radius:16px 16px 0 0;padding:28px 40px;text-align:center;">
+    <span style="font-size:20px;font-weight:900;color:#fff;letter-spacing:0.03em;">PROP<span style="color:rgba(255,255,255,0.4);">DESK</span></span>
+  </td></tr>
+  <tr><td style="background:#fff;padding:40px;">
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#0a0020;">Did you know most prop traders overpay tax? 🧮</h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#666;line-height:1.6;">Prop firm payouts are self-employment income — not capital gains. That means Income Tax, NIC, and allowable deductions. Most traders don't realise this until they get a surprise bill.</p>
+    <p style="margin:0 0 20px;font-size:15px;color:#666;line-height:1.6;">PropDesk calculates your exact liability <strong>before you withdraw</strong> — including challenge fees as deductible expenses.</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f7ff;border-radius:12px;padding:20px 24px;margin-bottom:28px;border-left:4px solid #6e45ff;">
+      <tr><td>
+        <div style="font-size:14px;color:#333;line-height:1.8;">
+          ✓ &nbsp;Income Tax at correct self-employment rates<br>
+          ✓ &nbsp;NIC thresholds factored in automatically<br>
+          ✓ &nbsp;Challenge fees deducted from gross income<br>
+          ✓ &nbsp;January payment on account calculated
+        </div>
+      </td></tr>
+    </table>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <tr><td align="center">
+        <a href="https://propdesk.uk/app.html" style="display:inline-block;background:#6e45ff;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:12px;">Try the tax calculator →</a>
+      </td></tr>
+    </table>
+    <p style="margin:0;font-size:13px;color:#999;">Available on Pro and Elite plans. 7-day free trial — no charge until day 8.</p>
+  </td></tr>
+  <tr><td style="background:#f0f0f6;border-radius:0 0 16px 16px;padding:20px 40px;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;">PropDesk · propdesk.uk</p>
+  </td></tr>
+</table></td></tr></table>
+</body></html>`;
+}
+
+function onboardingEmail3(email) {
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="margin:0;padding:0;background:#f4f4f8;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:40px 20px;">
+<table width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;">
+  <tr><td style="background:#07001f;border-radius:16px 16px 0 0;padding:28px 40px;text-align:center;">
+    <span style="font-size:20px;font-weight:900;color:#fff;letter-spacing:0.03em;">PROP<span style="color:rgba(255,255,255,0.4);">DESK</span></span>
+  </td></tr>
+  <tr><td style="background:#fff;padding:40px;">
+    <h1 style="margin:0 0 8px;font-size:24px;font-weight:800;color:#0a0020;">One rule could cost you your funded account ⚠️</h1>
+    <p style="margin:0 0 20px;font-size:15px;color:#666;line-height:1.6;">Every prop firm has inactivity rules. Miss a trading day and you could lose your funded account — not because you blew the drawdown, but because you forgot to place a trade.</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+      <tr>
+        <td style="background:#fff8e6;border:1px solid #f59e0b;border-radius:12px;padding:20px 24px;">
+          <div style="font-size:13px;font-weight:700;color:#f59e0b;margin-bottom:10px;">⚠ Example: FTMO inactivity rule</div>
+          <div style="font-size:14px;color:#555;line-height:1.7;">You must place at least 1 trade every 10 calendar days. Miss this and your account can be closed — even if you're profitable.</div>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0 0 20px;font-size:15px;color:#666;line-height:1.6;">PropDesk tracks your last trade date for every account and warns you before the deadline — with firm-specific rules for 16+ prop firms built in.</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <tr><td align="center">
+        <a href="https://propdesk.uk/app.html" style="display:inline-block;background:#6e45ff;color:#fff;font-size:15px;font-weight:700;text-decoration:none;padding:14px 36px;border-radius:12px;">Check your inactivity status →</a>
+      </td></tr>
+    </table>
+    <p style="margin:0;font-size:13px;color:#999;">Questions? Reply to this email anytime.</p>
+  </td></tr>
+  <tr><td style="background:#f0f0f6;border-radius:0 0 16px 16px;padding:20px 40px;text-align:center;">
+    <p style="margin:0;font-size:11px;color:#aaa;">PropDesk · propdesk.uk</p>
+  </td></tr>
+</table></td></tr></table>
+</body></html>`;
+}
+
+// ── EMAIL API ENDPOINTS ──────────────────────────────────────
+
+// Send welcome email (called after signup webhook or directly)
+app.post('/email/welcome', async (req, res) => {
+  const { email } = req.body;
+  if (!email) return res.status(400).json({ error: 'Missing email' });
+  await sendEmail({ to: email, subject: 'Welcome to PropDesk 🚀', html: welcomeEmail(email) });
+  res.json({ sent: true });
+});
+
+// Send onboarding sequence (day 3 and day 7)
+app.post('/email/onboarding', async (req, res) => {
+  const { email, day } = req.body;
+  if (!email || !day) return res.status(400).json({ error: 'Missing email or day' });
+  let subject, html;
+  if (day === 2) { subject = 'Are you paying too much tax on your prop payouts?'; html = onboardingEmail2(email); }
+  else if (day === 3) { subject = 'One rule could cost you your funded account ⚠️'; html = onboardingEmail3(email); }
+  else return res.status(400).json({ error: 'Invalid day — use 2 or 3' });
+  await sendEmail({ to: email, subject, html });
+  res.json({ sent: true });
+});
 
 app.listen(PORT, () => {
   console.log(`PropDesk backend listening on port ${PORT}`);
